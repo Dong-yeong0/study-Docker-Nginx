@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  nginx:
+    build: ./nginx
+    container_name: nginx
+    restart: always
+    depends_on:
+      - flask
+    networks:
+      - my-network
+    ports:
+        - "80:80"
+
+  flask:
+    build: ./flask
+    container_name: flask
+    restart: unless-stopped
+    environment:
+      - APP_NAME=FlaskTest
+    networks:
+          my-network:
+              aliases:
+                  - flask-app
+    expose:
+      - 5000
+
+networks:
+    my-network:

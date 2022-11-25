@@ -1,29 +1,87 @@
-version: "3.9"
+version: '3.2'
 
 services:
-  nginx:
-    build: ./nginx
-    container_name: nginx
-    restart: always
-    depends_on:
-      - flask
-    networks:
-      - my-network
+  elasticsearch:
+    build:
+      context: "${PWD}/ELK/elasticsearch/"
+      dockerfile: Dockerfile
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - type: bind
+        source: "${PWD}/ELK/elasticsearch/config/elasticsearch.yml"
+        target: /usr/share/elasticsearch/config/elasticsearch.yml
+        read_only: true
+      - "${PWD}/ELK/elasticsearch/data:/usr/share/elasticsearch/data"
     ports:
-        - "80:80"
-
-  flask:
-    build: ./flask
-    container_name: flask
-    restart: unless-stopped
+      - "9200:9200"
+      - "9300:9300"
     environment:
-      - APP_NAME=FlaskTest
+      ES_JAVA_OPTS: "-Xmx256m -Xms256m"
+      ELASTIC_PASSWORD: password
+      # Use single node discovery in order to disable production mode and avoid bootstrap checks
+      # see https://www.elastic.co/guide/en/elasticsearch/reference/current/bootstrap-checks.html
+      discovery.type: single-node
     networks:
-          my-network:
-              aliases:
-                  - flask-app
+      - elk
+
+  logstash:
+    build:
+      context: "${PWD}/ELK/logstash/"
+      dockerfile: Dockerfile
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - type: bind
+        source: "${PWD}/ELK/logstash/config/logstash.yml"
+        target: /usr/share/logstash/config/logstash.yml
+        read_only: true
+      - type: bind
+        source: "${PWD}/ELK/logstash/pipeline"
+        target: /usr/share/logstash/pipeline
+        read_only: true
+    ports:
+      - "5001:5001/tcp"
+      - "5001:5001/udp"
+      - "9600:9600"
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    build:
+      context: ELK/kibana/
+      dockerfile: Dockerfile
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - type: bind
+        source: "${PWD}/ELK/kibana/config/kibana.yml"
+        target: /usr/share/kibana/config/kibana.yml
+        read_only: true
+    ports:
+      - "5601:5601"
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+  
+  web-back:
+    build:
+      context: web/back/
+      dockerfile: Dockerfile
+    ports:
+    - "5000:5000"
     expose:
-      - 5000
+      - "5000"
+    networks:
+      - elk
+    depends_on:
+      - kibana
 
 networks:
-    my-network:
+  elk:
+    driver: bridge
